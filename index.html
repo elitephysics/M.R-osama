@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>English with Osama</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Tahoma,sans-serif;background:#f5f7fb;color:#172033}
+header{background:#fff;border-bottom:1px solid #e7eaf0;position:sticky;top:0;z-index:10}
+.nav{max-width:1150px;margin:auto;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.logo{font-size:21px;font-weight:800}.navlinks{display:flex;gap:8px;flex-wrap:wrap}
+button{border:0;border-radius:10px;padding:10px 15px;cursor:pointer;font-weight:700}
+.nav button{background:#fff7ed;color:#f97316}.nav .primary{background:#f97316;color:#fff}
+.hero{max-width:1150px;margin:25px auto 10px;padding:25px 18px}.hero h1{font-size:32px;margin:0 0 10px}.hero p{color:#667085}
+.container{max-width:1150px;margin:auto;padding:0 18px 50px}.section-title{display:flex;justify-content:space-between;align-items:center;margin:20px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.card{background:#fff;border:1px solid #e7eaf0;border-radius:16px;padding:18px;box-shadow:0 5px 18px #1720330b}.card h3{margin:8px 0}
+.badge{display:inline-block;padding:5px 9px;border-radius:20px;background:#eaf7ee;color:#18733a;font-size:12px}.badge.paid{background:#fff1e7;color:#a54c00}
+.muted{color:#667085}.price{font-size:20px;font-weight:800;margin:14px 0}.actions{display:flex;gap:8px;margin-top:15px;flex-wrap:wrap}
+.actions button:first-child{background:#f97316;color:#fff}.actions button:last-child{background:#eef2f6;color:#172033}
+.modal{display:none;position:fixed;inset:0;background:#0008;z-index:30;align-items:center;justify-content:center;padding:20px}.modal.show{display:flex}
+.box{background:#fff;border-radius:18px;max-width:600px;width:100%;padding:22px;max-height:90vh;overflow:auto}.close{float:left;background:#eee}
+.lesson{padding:13px;border:1px solid #e4e7ec;border-radius:12px;margin:9px 0}.msg{padding:11px;border-radius:10px;background:#f2f4f7;margin:10px 0}
+input{width:100%;padding:12px;margin:6px 0;border:1px solid #d0d5dd;border-radius:10px}label{display:block;margin-top:7px;font-weight:700}
+footer{text-align:center;color:#667085;padding:25px}.status{font-size:14px}
+@media(max-width:600px){.hero h1{font-size:26px}.nav{align-items:flex-start;flex-direction:column}.navlinks{width:100%}.navlinks button{flex:1}}
+</style>
+</head>
+<body>
+<header><div class="nav">
+<div class="logo">🎓 English with Osama</div>
+<div class="navlinks">
+<button onclick="showInfo('students')">👨‍🎓 الطلاب</button>
+<button onclick="showTeacher()">👨‍🏫 المدرس</button>
+<button onclick="document.getElementById('teamSection').scrollIntoView({behavior:'smooth'})">👥 فريق العمل</button>
+<button id="authBtn" onclick="openAuth()">تسجيل الدخول</button>
+<button class="primary" onclick="subscribe()">الاشتراك</button>
+</div></div></header>
+
+<section class="hero">
+<h1>ابدأ رحلتك التعليمية</h1>
+<p>جميع الكورسات والدروس في مكان واحد، مع إدارة للطلاب والمدرس وفريق العمل.</p>
+<div id="userBox"></div>
+</section>
+
+<main class="container">
+<div class="section-title"><h2>الكورسات</h2><span class="muted status" id="status">جاري تحميل البيانات...</span></div>
+<div id="courses" class="grid"></div>
+
+<section id="teamSection" style="margin-top:45px">
+<div class="section-title"><h2>👥 فريق العمل</h2></div>
+<div id="team" class="grid"></div>
+</section>
+</main>
+<footer>© 2026 English with Osama</footer>
+
+<div id="modal" class="modal"><div class="box"><button class="close" onclick="hide()">إغلاق ✕</button><div id="modalContent"></div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+let profile=null;
+
+function esc(s){return String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
+function safeUrl(s){try{const u=new URL(s);return ['http:','https:'].includes(u.protocol)?u.href:'#'}catch{return '#'}}
+function v(id){return document.getElementById(id)?.value.trim()||''}
+function open(html){document.getElementById('modalContent').innerHTML=html;document.getElementById('modal').classList.add('show')}
+function hide(){document.getElementById('modal').classList.remove('show')}
+
+async function init(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session) await loadProfile(session.user.id); else updateAuth();
+  await Promise.all([loadCourses(),loadTeam()]);
+  sb.auth.onAuthStateChange(async(_e,s)=>{if(s) await loadProfile(s.user.id); else {profile=null;updateAuth()}});
+}
+
+async function loadProfile(id){
+  const {data,error}=await sb.from('profiles').select('*').eq('id',id).maybeSingle();
+  profile=data||null; updateAuth();
+  if(error) console.warn(error);
+}
+function updateAuth(){
+  const b=document.getElementById('authBtn'),u=document.getElementById('userBox');
+  if(profile){
+    b.textContent='تسجيل الخروج';b.onclick=logout;
+    u.innerHTML='<div class="msg">مرحباً <b>'+esc(profile.full_name)+'</b>'+(profile.student_code?' — كود الطالب: <b>'+esc(profile.student_code)+'</b>':'')+'</div>';
+  }else{b.textContent='تسجيل الدخول';b.onclick=openAuth;u.innerHTML=''}
+}
+
+async function loadCourses(){
+  const {data,error}=await sb.from('courses').select('*').order('id');
+  const el=document.getElementById('courses');
+  if(error){document.getElementById('status').textContent='خطأ في الاتصال';el.innerHTML='<div class="msg">تعذر تحميل الكورسات: '+esc(error.message)+'</div>';return}
+  document.getElementById('status').textContent=(data?.length||0)+' كورسات';
+  el.innerHTML=(data||[]).map(c=>`<div class="card"><span class="badge ${c.is_free?'':'paid'}">${c.is_free?'مجاني':'مدفوع'}</span><h3>${esc(c.title)}</h3><p class="muted">${esc(c.description||'')}</p><div class="price">${c.is_free?'مجاني':Number(c.price||0)+' جنيه'}</div><div class="actions"><button onclick="openCourse(${c.id})">${c.is_free?'فتح الكورس':'الاشتراك في الكورس'}</button><button onclick="showLessons(${c.id})">الدروس</button></div></div>`).join('')||'<div class="msg">لا توجد كورسات حالياً.</div>';
+}
+
+async function loadTeam(){
+  const el=document.getElementById('team');
+  const {data,error}=await sb.from('team_members').select('*').order('id');
+  if(error){el.innerHTML='<div class="msg">تعذر تحميل فريق العمل.</div>';return}
+  el.innerHTML=(data||[]).map(x=>`<div class="card"><div style="font-size:38px">${esc(x.icon||'👤')}</div><h3>${esc(x.name)}</h3><p class="muted">${esc(x.role_title||'')}</p></div>`).join('')||'<div class="msg">لم تتم إضافة فريق العمل بعد.</div>';
+}
+
+async function getCourse(id){const {data,error}=await sb.from('courses').select('*').eq('id',id).single();if(error)throw error;return data}
+async function showLessons(id){
+  try{const c=await getCourse(id);const {data:lessons,error}=await sb.from('lessons').select('*').eq('course_id',id).order('sort_order').order('id');if(error)throw error;
+  open('<h2>'+esc(c.title)+'</h2>'+((lessons||[]).map((l,i)=>`<div class="lesson"><b>📘 الدرس ${i+1}: ${esc(l.title)}</b><div class="actions"><button onclick="openLesson(${l.id})">فتح الدرس</button></div></div>`).join('')||'<p class="muted">لا توجد دروس بعد.</p>'));}catch(e){alert(e.message)}
+}
+async function openCourse(id){
+  try{const c=await getCourse(id);if(!c.is_free&&!profile){return openAuth('سجل الدخول أولاً للوصول للكورس المدفوع.')}
+    if(!c.is_free){const {data:e,error}=await sb.from('enrollments').select('id').eq('course_id',id).eq('student_id',profile.id).maybeSingle();if(error)throw error;if(!e)return subscribe(c.title)}
+    showLessons(id);
+  }catch(e){alert(e.message)}
+}
+async function openLesson(id){
+  try{const {data:l,error}=await sb.from('lessons').select('*').eq('id',id).single();if(error)throw error;
+    let video='';
+    if(l.video_url){
+      let url=l.video_url;
+      if(url.startsWith('storage:')){
+        const {data:signed,error:signErr}=await sb.storage.from('course-videos').createSignedUrl(url.slice(8),3600);
+        if(signErr)throw signErr;
+        url=signed.signedUrl;
+      }
+      video='<video controls playsinline preload="metadata" style="width:100%;max-height:55vh;border-radius:12px;background:#000"><source src="'+safeUrl(url)+'"></video>';
+    }
+    let html='<h2>'+esc(l.title)+'</h2>'+ (video?'<div style="margin:15px 0">'+video+'</div>':'<p class="muted">لا يوجد فيديو لهذا الدرس.</p>') +(l.pdf_path?'<p><a href="'+safeUrl(l.pdf_path)+'" target="_blank" rel="noopener"><button class="secondary">📄 فتح PDF</button></a></p>':'')+'<p class="muted">بعد مشاهدة الدرس اضغط لتسجيل تقدمك.</p><button onclick="markDone('+l.id+')">✓ تعليم الدرس كمكتمل</button>';
+    open(html);
+  }catch(e){alert('تعذر فتح الفيديو: '+e.message)}
+}
+async function markDone(lessonId){if(!profile)return openAuth('سجل الدخول أولاً لحفظ التقدم.');const {error}=await sb.from('progress').upsert({student_id:profile.id,lesson_id:lessonId,completed:true,updated_at:new Date().toISOString()},{onConflict:'student_id,lesson_id'});alert(error?'تعذر حفظ التقدم: '+error.message:'تم حفظ تقدمك ✓')}
+
+function openAuth(note=''){open(`<h2>تسجيل الدخول</h2>${note?'<div class="msg">'+esc(note)+'</div>':''}<label>البريد الإلكتروني</label><input id="email" type="email" placeholder="student@example.com"><label>كلمة المرور</label><input id="pass" type="password" placeholder="6 أحرف أو أكثر"><div class="actions"><button onclick="signin()">تسجيل الدخول</button><button onclick="openSignup()">إنشاء حساب جديد</button></div>`)}
+function openSignup(){open(`<h2>إنشاء حساب طالب</h2><label>اسم الطالب</label><input id="name" placeholder="اسم الطالب"><label>كود الطالب (اختياري)</label><input id="code" placeholder="مثال: 1001"><label>البريد الإلكتروني</label><input id="email" type="email" placeholder="student@example.com"><label>كلمة المرور</label><input id="pass" type="password" placeholder="6 أحرف أو أكثر"><div class="actions"><button onclick="signup()">إنشاء الحساب</button><button onclick="openAuth()">لدي حساب بالفعل</button></div>`)}
+async function signup(){const name=v('name'),code=v('code'),email=v('email'),pass=v('pass');if(!name||!email||!pass)return alert('اكتب الاسم والبريد وكلمة المرور.');const {data,error}=await sb.auth.signUp({email,password:pass,options:{data:{full_name:name,student_code:code||null}}});if(error)return alert(error.message);hide();alert(data.session?'تم إنشاء الحساب وتسجيل الدخول ✓':'تم إنشاء الحساب. إذا طلب Supabase تأكيد البريد، أكد بريدك ثم سجل الدخول.')}
+async function signin(){const email=v('email'),pass=v('pass');if(!email||!pass)return alert('اكتب البريد وكلمة المرور.');const {error}=await sb.auth.signInWithPassword({email,password:pass});if(error)return alert(error.message);hide()}
+async function logout(){await sb.auth.signOut();alert('تم تسجيل الخروج.')}
+function subscribe(name=''){open(`<h2>الاشتراك ${name?'في '+esc(name):'في الكورس'}</h2><p>هذا الكورس يحتاج صلاحية من المدرس.</p><p class="muted">بعد تسجيل الدخول يستطيع المدرس منحك الاشتراك من لوحة التحكم.</p>`)}
+function showInfo(type){open(`<h2>${type==='students'?'👨‍🎓 الطلاب':'👨‍🏫 المدرس'}</h2><p>${type==='students'?'سجّل حسابك للوصول للكورسات المجانية والكورسات المسموح لك بها.':'لو أنت المدرس، سجّل الدخول بحساب المدرس ثم افتح لوحة التحكم.'}</p>`)}
+function showTeacher(){if(profile&&profile.role==='teacher'){location.href='admin.html';return}open(`<h2>👨‍🏫 دخول المدرس</h2><p class="muted">سجّل الدخول بحساب المدرس للوصول إلى لوحة التحكم.</p><label>البريد الإلكتروني</label><input id="email" type="email" placeholder="teacher@example.com"><label>كلمة المرور</label><input id="pass" type="password" placeholder="كلمة المرور"><label>كود تفعيل المدرس</label><input id="teacherCode" type="text" placeholder="كود المدرس"><div class="actions"><button onclick="teacherSignin()">دخول المدرس</button><button onclick="openTeacherSignup()">إنشاء حساب مدرس</button></div>`)}
+function openTeacherSignup(){open(`<h2>👨‍🏫 إنشاء حساب مدرس</h2><label>اسم المدرس</label><input id="teacherName" placeholder="اسم المدرس"><label>البريد الإلكتروني</label><input id="teacherEmail" type="email" placeholder="teacher@example.com"><label>كلمة المرور</label><input id="teacherPass" type="password" placeholder="6 أحرف أو أكثر"><label>كود تفعيل المدرس</label><input id="teacherCode" type="text" placeholder="كود المدرس"><div class="actions"><button onclick="teacherSignup()">إنشاء حساب المدرس</button><button onclick="showTeacher()">رجوع لتسجيل الدخول</button></div>`)}
+async function activateTeacher(code){const {error}=await sb.rpc('activate_teacher',{p_code:code});return error}
+async function teacherSignup(){const name=v('teacherName'),email=v('teacherEmail'),pass=v('teacherPass'),code=v('teacherCode');if(!name||!email||!pass||!code)return alert('اكتب كل البيانات وكود تفعيل المدرس.');const {data,error}=await sb.auth.signUp({email,password:pass,options:{data:{full_name:name}}});if(error)return alert(error.message);if(data.session){const e=await activateTeacher(code);if(e)return alert(e.message);location.href='admin.html';return}hide();alert('تم إنشاء الحساب. إذا طلب Supabase تأكيد البريد، أكد بريدك أولاً، ثم ارجع وسجّل الدخول بكود تفعيل المدرس.')}
+async function teacherSignin(){const email=v('email'),pass=v('pass'),code=v('teacherCode');if(!email||!pass||!code)return alert('اكتب البريد وكلمة المرور وكود تفعيل المدرس.');const {data,error}=await sb.auth.signInWithPassword({email,password:pass});if(error)return alert(error.message);const e=await activateTeacher(code);if(e){await sb.auth.signOut();return alert(e.message)}location.href='admin.html'}
+init();
+</script>
+</body>
+</html>
